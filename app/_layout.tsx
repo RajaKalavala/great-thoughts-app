@@ -7,10 +7,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { useEffect } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import 'react-native-reanimated'
 
 import { useColorScheme } from '@/hooks/useColorScheme'
+import {
+  initializeNotifications,
+  setupNotificationReceivedHandler,
+  setupNotificationResponseHandler,
+} from '@/lib/notifications'
 import { useAppStore } from '@/lib/store'
 
 const queryClient = new QueryClient()
@@ -21,6 +27,20 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   })
+
+  // Initialize notification system
+  useEffect(() => {
+    const setupNotifications = async () => {
+      // Initialize notifications
+      await initializeNotifications()
+
+      // Setup notification handlers
+      setupNotificationResponseHandler()
+      setupNotificationReceivedHandler()
+    }
+
+    setupNotifications()
+  }, [])
 
   if (!loaded) {
     return null

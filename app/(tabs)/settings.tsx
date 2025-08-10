@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics'
 import { MotiView } from 'moti'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -12,6 +13,11 @@ import {
 import { ThemedText } from '@/components/ThemedText'
 import { ThemedView } from '@/components/ThemedView'
 import { TimePicker } from '@/components/ui/TimePicker'
+import {
+  checkNotificationStatus,
+  requestNotificationPermissions,
+  updateNotificationTime,
+} from '@/lib/notifications'
 import { useAppStore } from '@/lib/store'
 import { borderRadius, shadows, spacing } from '@/lib/theme'
 
@@ -19,6 +25,15 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme()
   const { preferences, setPreferences } = useAppStore()
   const [showTimePicker, setShowTimePicker] = useState(false)
+  const [notificationStatus, setNotificationStatus] = useState({
+    granted: false,
+    scheduled: false,
+  })
+
+  // Check notification status on mount
+  useEffect(() => {
+    checkNotificationStatus().then(setNotificationStatus)
+  }, [])
 
   const handleThemeModeChange = (mode: 'light' | 'dark' | 'system') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -34,8 +49,43 @@ export default function SettingsScreen() {
     setPreferences({ reduceMotion: !preferences.reduceMotion })
   }
 
-  const handleNotificationTimeChange = (time: string) => {
-    setPreferences({ notificationTime: time })
+  const handleNotificationTimeChange = async (time: string) => {
+    const success = await updateNotificationTime(time)
+
+    if (success) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+      // Update local state
+      setNotificationStatus((prev) => ({ ...prev, scheduled: true }))
+    } else {
+      Alert.alert(
+        'Notification Error',
+        'Failed to update notification time. Please check your notification permissions.',
+        [{ text: 'OK' }]
+      )
+    }
+  }
+
+  const handleRequestPermissions = async () => {
+    const granted = await requestNotificationPermissions()
+
+    if (granted) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+      setNotificationStatus((prev) => ({ ...prev, granted: true }))
+
+      // Schedule notification with current time
+      if (preferences.notificationTime) {
+        const success = await updateNotificationTime(
+          preferences.notificationTime
+        )
+        setNotificationStatus((prev) => ({ ...prev, scheduled: success }))
+      }
+    } else {
+      Alert.alert(
+        'Permission Required',
+        'Please enable notifications in your device settings to receive daily reminders.',
+        [{ text: 'OK' }]
+      )
+    }
   }
 
   const themeModes = [
@@ -250,12 +300,53 @@ export default function SettingsScreen() {
             Set your daily reminder time
           </ThemedText>
 
+          {/* Permission Status */}
+          <View style={styles.permissionStatus}>
+            <ThemedText variant="caption" style={styles.statusLabel}>
+              Status:
+            </ThemedText>
+            <ThemedText
+              variant="caption"
+              style={[
+                styles.statusValue,
+                notificationStatus.granted
+                  ? styles.statusGranted
+                  : styles.statusDenied,
+              ]}>
+              {notificationStatus.granted ? 'Granted' : 'Not Granted'}
+            </ThemedText>
+          </View>
+
+          {/* Request Permissions Button */}
+          {!notificationStatus.granted && (
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={handleRequestPermissions}>
+              <ThemedText style={styles.permissionButtonText}>
+                Enable Notifications
+              </ThemedText>
+            </TouchableOpacity>
+          )}
+
+          {/* Time Picker */}
           <TouchableOpacity
-            style={styles.timeButton}
+            style={[
+              styles.timeButton,
+              !notificationStatus.granted && styles.timeButtonDisabled,
+            ]}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-              setShowTimePicker(true)
-            }}>
+              if (notificationStatus.granted) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setShowTimePicker(true)
+              } else {
+                Alert.alert(
+                  'Permission Required',
+                  'Please enable notifications first.',
+                  [{ text: 'OK' }]
+                )
+              }
+            }}
+            disabled={!notificationStatus.granted}>
             <View style={styles.timeContent}>
               <ThemedText variant="body" style={styles.timeLabel}>
                 Daily Reminder
@@ -265,14 +356,30 @@ export default function SettingsScreen() {
               </ThemedText>
             </View>
             <View style={styles.timeValue}>
-              <ThemedText variant="body" style={styles.timeText}>
+              <ThemedText style={styles.timeText}>
                 {preferences.notificationTime}
               </ThemedText>
-              <ThemedText variant="caption" style={styles.timeHint}>
-                Tap to change
-              </ThemedText>
+              <ThemedText style={styles.timeHint}>Tap to change</ThemedText>
             </View>
           </TouchableOpacity>
+
+          {/* Scheduling Status */}
+          {notificationStatus.granted && (
+            <View style={styles.schedulingStatus}>
+              <ThemedText
+                variant="caption"
+                style={[
+                  styles.schedulingText,
+                  notificationStatus.scheduled
+                    ? styles.schedulingActive
+                    : styles.schedulingInactive,
+                ]}>
+                {notificationStatus.scheduled
+                  ? '✓ Scheduled for daily delivery'
+                  : '⚠ Not currently scheduled'}
+              </ThemedText>
+            </View>
+          )}
         </MotiView>
 
         {/* App Info */}
@@ -304,7 +411,7 @@ export default function SettingsScreen() {
                 Build
               </ThemedText>
               <ThemedText variant="body" style={styles.infoValue}>
-                Step 5 Complete
+                Step 7 Complete
               </ThemedText>
             </View>
           </View>
@@ -487,6 +594,40 @@ const styles = StyleSheet.create({
   toggleThumbActive: {
     transform: [{ translateX: 20 }],
   },
+  permissionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  statusLabel: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginRight: spacing.sm,
+  },
+  statusValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  statusGranted: {
+    color: '#34C759',
+  },
+  statusDenied: {
+    color: '#FF3B30',
+  },
+  permissionButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    ...shadows.light,
+  },
+  permissionButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   timeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -495,6 +636,9 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     ...shadows.light,
+  },
+  timeButtonDisabled: {
+    opacity: 0.5,
   },
   timeContent: {
     flex: 1,
@@ -520,6 +664,22 @@ const styles = StyleSheet.create({
   timeHint: {
     fontSize: 12,
     opacity: 0.7,
+  },
+  schedulingStatus: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  schedulingText: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  schedulingActive: {
+    color: '#34C759',
+  },
+  schedulingInactive: {
+    color: '#FF9500',
   },
   infoContainer: {
     gap: spacing.md,

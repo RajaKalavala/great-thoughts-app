@@ -2,12 +2,22 @@ import * as Haptics from 'expo-haptics'
 import { router } from 'expo-router'
 import { MotiView } from 'moti'
 import React, { useState } from 'react'
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 
 import { ThemedText } from '@/components/ThemedText'
 import { AnimatedGradient } from '@/components/ui/AnimatedGradient'
 import { ThemeChip } from '@/components/ui/ThemeChip'
 import { TimePicker } from '@/components/ui/TimePicker'
+import {
+  requestNotificationPermissions,
+  updateNotificationTime,
+} from '@/lib/notifications'
 import { useAppStore } from '@/lib/store'
 import { ThemeTag, borderRadius, shadows, spacing } from '@/lib/theme'
 
@@ -28,6 +38,8 @@ export default function OnboardingScreen() {
     preferences.notificationTime
   )
   const [showTimePicker, setShowTimePicker] = useState(false)
+  const [isSettingUpNotifications, setIsSettingUpNotifications] =
+    useState(false)
 
   const handleThemeToggle = (theme: ThemeTag) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -45,8 +57,35 @@ export default function OnboardingScreen() {
     setNotificationTime(time)
   }
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+
+    // Set up notifications if user has selected a time
+    if (notificationTime) {
+      setIsSettingUpNotifications(true)
+
+      try {
+        // Request notification permissions
+        const hasPermission = await requestNotificationPermissions()
+
+        if (hasPermission) {
+          // Schedule the notification
+          await updateNotificationTime(notificationTime)
+        } else {
+          // Show alert but continue with onboarding
+          Alert.alert(
+            'Notifications Disabled',
+            'You can enable notifications later in Settings to receive daily reminders.',
+            [{ text: 'Continue' }]
+          )
+        }
+      } catch (error) {
+        console.error('Error setting up notifications:', error)
+        // Continue with onboarding even if notifications fail
+      } finally {
+        setIsSettingUpNotifications(false)
+      }
+    }
 
     // Update preferences
     setPreferences({
@@ -149,6 +188,10 @@ export default function OnboardingScreen() {
             <ThemedText style={styles.timeText}>{notificationTime}</ThemedText>
             <ThemedText style={styles.timeHint}>Tap to change</ThemedText>
           </TouchableOpacity>
+
+          <ThemedText variant="caption" style={styles.notificationNote}>
+            We'll ask for notification permissions when you continue
+          </ThemedText>
         </MotiView>
 
         {/* Continue Button */}
@@ -168,13 +211,13 @@ export default function OnboardingScreen() {
               !canContinue && styles.continueButtonDisabled,
             ]}
             onPress={handleContinue}
-            disabled={!canContinue}>
+            disabled={!canContinue || isSettingUpNotifications}>
             <ThemedText
               style={[
                 styles.continueText,
                 !canContinue && styles.continueTextDisabled,
               ]}>
-              Continue
+              {isSettingUpNotifications ? 'Setting up...' : 'Continue'}
             </ThemedText>
           </TouchableOpacity>
         </MotiView>
@@ -252,6 +295,13 @@ const styles = StyleSheet.create({
   timeHint: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  notificationNote: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
   buttonContainer: {
     marginTop: spacing.xl,
