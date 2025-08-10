@@ -60,6 +60,17 @@ export function getColors(mode: ThemeMode) {
   return palette[mode]
 }
 
+// Get effective theme mode based on user preference and system settings
+export function getEffectiveThemeMode(
+  userPreference: 'light' | 'dark' | 'system',
+  systemColorScheme: 'light' | 'dark' | null
+): ThemeMode {
+  if (userPreference === 'system') {
+    return systemColorScheme || 'light'
+  }
+  return userPreference
+}
+
 export const spacing = {
   xs: 4,
   sm: 8,

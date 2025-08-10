@@ -2,7 +2,7 @@ import React from 'react'
 import { StyleSheet, Text, TextProps, useColorScheme } from 'react-native'
 
 import { useAppStore } from '@/lib/store'
-import { getColors, scaleTypography, ThemeMode } from '@/lib/theme'
+import { getColors, getEffectiveThemeMode, scaleTypography } from '@/lib/theme'
 
 type TypographyVariant = 'headline' | 'title' | 'body' | 'caption' | 'meta'
 
@@ -22,9 +22,12 @@ export function ThemedText({
   const colorScheme = useColorScheme()
   const { preferences } = useAppStore()
 
-  const mode: ThemeMode = colorScheme === 'dark' ? 'dark' : 'light'
-  const colors = getColors(mode)
-  const sizes = scaleTypography(scale)
+  const effectiveMode = getEffectiveThemeMode(
+    preferences.themeMode,
+    colorScheme
+  )
+  const colors = getColors(effectiveMode)
+  const sizes = scaleTypography(preferences.fontScale)
 
   const sizeMap = {
     headline: sizes.headline,
